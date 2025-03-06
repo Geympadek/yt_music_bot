@@ -17,3 +17,12 @@ def get_search_menu(results: list[dict[str, str]], min_size=0):
             kb.append([EMPTY_BTN])
 
     return types.InlineKeyboardMarkup(inline_keyboard=kb)
+
+def get_language_menu():
+    prefix = "language_selected:"
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[[
+            types.InlineKeyboardButton(text="🇬🇧 English", callback_data=prefix+"en"),
+            types.InlineKeyboardButton(text="🇷🇺 Русский", callback_data=prefix+"ru")
+        ]]
+    )

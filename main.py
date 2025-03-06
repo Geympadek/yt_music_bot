@@ -20,9 +20,17 @@ import io
 import os
 import utils
 
+import localizations
+
+async def ask_language(chat_id: int, state: FSMContext):
+    kb = menu.get_language_menu()
+    lang_msg = await bot.send_message(chat_id, text="Select language / Выберите язык", reply_markup=kb)
+    await state.update_data(lang_msg_id=lang_msg.message_id)
+
 @dp.message(Command("start"))
+@dp.message(Command("language"))
 async def on_start(msg: types.Message, state: FSMContext):
-    await msg.answer(text="Добро пожаловать")
+    await ask_language(msg.from_user.id, state)
 
 @dp.message()
 async def on_message(msg: types.Message, state: FSMContext):
@@ -33,17 +41,26 @@ async def on_message(msg: types.Message, state: FSMContext):
     else:
         await try_search(msg.from_user.id, text.strip(), state)
 
+def get_language(user_id: int):
+    entry = database.read("users", {"user_id": user_id})[0]
+    return entry['language']
+
+def get_localization(user_id: int):
+    return localizations.localizations[get_language(user_id)]
+
 async def try_send_music(chat_id: int, url: str, state: FSMContext):
-    progress_msg = await bot.send_message(chat_id, "*Загрузка аудио...*🕒")
+    local = get_localization(chat_id)
+
+    progress_msg = await bot.send_message(chat_id, local.fetch_progress)
 
     try: 
         audio_path = await yt_api.download(url)
     except None:
-        await bot.send_message(chat_id, "*Во время загрузки аудио произошла ошибка.*")
+        await bot.send_message(chat_id, local.audio_error)
         await progress_msg.delete()
         return
     
-    await progress_msg.edit_text("*Отправка аудио...*🚀")
+    await progress_msg.edit_text(local.send_progress)
     await bot.send_chat_action(chat_id, "upload_voice")
     cover_path = os.path.join(config.TEMP_DIR, "cover.jpg")
 
@@ -63,7 +80,7 @@ async def try_send_music(chat_id: int, url: str, state: FSMContext):
             thumbnail=types.FSInputFile(cover_path)
         )
     except TelegramEntityTooLarge:
-        await bot.send_message(chat_id, "*Не удалось отправить аудио: размер файл превышает лимит Телеграма.*")
+        await bot.send_message(chat_id, local.file_too_large)
     await progress_msg.delete()
 
 async def update_results(result_message: Message, results: list[dict[str,str]], min_size=0):
@@ -71,7 +88,8 @@ async def update_results(result_message: Message, results: list[dict[str,str]], 
     await result_message.edit_reply_markup(reply_markup=kb)
 
 async def try_search(chat_id: int, query: str, state: FSMContext):
-    response_msg = await bot.send_message(chat_id, f'*Результаты по запросу:*\n_{query}_')
+    local = get_localization(chat_id)
+    response_msg = await bot.send_message(chat_id, local.search_results + f'\n_{query}_')
     try:
         results = await yt_api.search(query, update_func=lambda results:update_results(response_msg, results, 10))
         try:
@@ -79,13 +97,29 @@ async def try_search(chat_id: int, query: str, state: FSMContext):
         except TelegramBadRequest:
             pass
     except Exception as e:
-        await bot.send_message(chat_id, "*Во время поиска произошла ошибка.*")
+        await bot.send_message(chat_id, local.search_error)
         await response_msg.delete()
 
 @dp.callback_query(F.data.startswith("video_chosen"))
-async def on_query(query: CallbackQuery, state: FSMContext):
+async def on_video_chosen(query: CallbackQuery, state: FSMContext):
     url = query.data.split(':', 1)[1]
     await try_send_music(query.from_user.id, url, state)
+
+@dp.callback_query(F.data.startswith("language_selected"))
+async def on_language_selected(query: CallbackQuery, state: FSMContext):
+    language = query.data.split(':', 1)[1]
+    user_id = query.from_user.id
+    filters = {"user_id": user_id}
+
+    if len(database.read("users", filters=filters)):
+        database.update("users", {"language": language}, filters=filters)
+    else:
+        database.create("users", {"user_id": user_id, "language": language})
+    
+    local = get_localization(user_id)
+
+    lang_msg_id = await state.get_value("lang_msg_id")
+    await bot.edit_message_text(text=local.language_selected, chat_id=user_id, message_id=lang_msg_id)
 
 async def main():
     os.makedirs(config.TEMP_DIR, exist_ok=True)
