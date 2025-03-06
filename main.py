@@ -1,5 +1,5 @@
 import loader
-from loader import dp, bot
+from loader import dp, bot, database
 
 from aiogram.exceptions import TelegramEntityTooLarge, TelegramBadRequest
 from aiogram import types
