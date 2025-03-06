@@ -28,8 +28,12 @@ async def ask_language(chat_id: int, state: FSMContext):
     await state.update_data(lang_msg_id=lang_msg.message_id)
 
 @dp.message(Command("start"))
-@dp.message(Command("language"))
 async def on_start(msg: types.Message, state: FSMContext):
+    await ask_language(msg.from_user.id, state)
+    await state.set_state("start")
+
+@dp.message(Command("language"))
+async def on_language_command(msg: types.Message, state: FSMContext):
     await ask_language(msg.from_user.id, state)
 
 @dp.message()
@@ -120,6 +124,10 @@ async def on_language_selected(query: CallbackQuery, state: FSMContext):
 
     lang_msg_id = await state.get_value("lang_msg_id")
     await bot.edit_message_text(text=local.language_selected, chat_id=user_id, message_id=lang_msg_id)
+
+    if await state.get_state() == "start":
+        await bot.send_message(user_id, text=local.start)
+        await state.set_state(None)
 
 async def main():
     os.makedirs(config.TEMP_DIR, exist_ok=True)
