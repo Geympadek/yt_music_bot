@@ -90,7 +90,7 @@ async def try_send_music(chat_id: int, url: str, state: FSMContext):
             thumbnail=types.FSInputFile(cover_path)
         )
     else:
-        msg = local.file_too_large + get_alt_link(audio_path)
+        msg = local.file_too_large + f"({get_alt_link(audio_path)})"
         await bot.send_message(chat_id, msg)
 
     await progress_msg.delete()
