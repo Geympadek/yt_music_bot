@@ -6,25 +6,33 @@ from mutagen import mp4
 from PIL import Image
 import requests
 import config
-from concurrent.futures import ProcessPoolExecutor
+from config import AUDIO_PATH
+from concurrent.futures import ThreadPoolExecutor
 import asyncio
 import typing
+import time
 
-TEMP_DIR = os.path.join(config.TEMP_DIR, "yt_api")
-
-os.makedirs(TEMP_DIR, exist_ok=True)
+os.makedirs(AUDIO_PATH, exist_ok=True)
 
 song_count = 0
 mutex = Lock()
 
+file_dates = {}
 def soft_clear():
     """
     Cleares the temp directory, ignoring errors
     """
-    for file in os.listdir(TEMP_DIR):
-        path = os.path.join(TEMP_DIR, file)
+    global file_dates
+    for file in os.listdir(AUDIO_PATH):
+        path = os.path.join(AUDIO_PATH, file)
         try:
-            os.remove(path)
+            if (file not in file_dates):
+                print(f"File {file} doesn't have a date, removing it.")
+                os.remove(path)
+            if time.time() - file_dates[file] > config.FILE_LIFETIME:
+                print(f"File {file} exists for too long, removing it.")
+                os.remove(path)
+                del file_dates[file]
         except:
             pass
 
@@ -51,13 +59,14 @@ def load_audio(url: str, max_retries=3, timeout = 7.5) -> str:
     """
     Takes youtube `url` as input and returns the name of downloaded file.
     """
+    global file_dates
     global song_count
     filename = ""
     with mutex:
         song_count += 1
     filename = str(song_count) + ".m4a"
         
-    path = os.path.join(TEMP_DIR, filename)
+    path = os.path.join(AUDIO_PATH, filename)
     
     attempt = 0
     while True:
@@ -67,7 +76,8 @@ def load_audio(url: str, max_retries=3, timeout = 7.5) -> str:
         interrupted = False
 
         try:
-            ys.download(output_path=TEMP_DIR, filename=filename, timeout=timeout)
+            ys.download(output_path=AUDIO_PATH, filename=filename, timeout=timeout)
+            file_dates[filename] = time.time()
         except Exception:
             interrupted = True
             print("Error raised")
@@ -103,11 +113,11 @@ async def download(url: str):
     soft_clear()
     
     loop = asyncio.get_event_loop()
-    with ProcessPoolExecutor() as executor:
+    with ThreadPoolExecutor() as executor:
         filename = await loop.run_in_executor(executor, load_audio, url)
-    return os.path.join(TEMP_DIR, filename)
+    return os.path.join(AUDIO_PATH, filename)
 
-async def search(query: str, limit: int = 10, update_func: typing.Callable[[list[dict[str, str]]], None] | None = None) -> list[dict]:
+async def search(query: str, limit: int = 7, update_func: typing.Callable[[list[dict[str, str]]], None] | None = None) -> list[dict]:
     raw_results = Search(query)
     videos = raw_results.videos
 

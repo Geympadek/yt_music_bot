@@ -52,6 +52,9 @@ def get_language(user_id: int):
 def get_localization(user_id: int):
     return localizations.localizations[get_language(user_id)]
 
+def get_alt_link(filepath: str):
+    return config.ALT_DOWNLOAD_LINK + os.path.split(filepath)[1]
+
 async def try_send_music(chat_id: int, url: str, state: FSMContext):
     local = get_localization(chat_id)
 
@@ -66,25 +69,30 @@ async def try_send_music(chat_id: int, url: str, state: FSMContext):
     
     await progress_msg.edit_text(local.send_progress)
     await bot.send_chat_action(chat_id, "upload_voice")
-    cover_path = os.path.join(config.TEMP_DIR, "cover.jpg")
 
-    audio = MP4(audio_path)
-    author = audio.tags['\xa9nam'][0]
-    title = audio.tags['\xa9ART'][0]
-    
-    with open(cover_path, "wb") as cover_file:
-        cover_file.write(audio.tags['covr'][0])
+    file_size = os.path.getsize(audio_path)
+    if file_size < config.FILE_LIMIT:
+        cover_path = os.path.join(config.TEMP_DIR, "cover.jpg")
 
-    try:
+        audio = MP4(audio_path)
+        author = audio.tags['\xa9nam'][0]
+        title = audio.tags['\xa9ART'][0]
+        
+        with open(cover_path, "wb") as cover_file:
+            cover_file.write(audio.tags['covr'][0])
+
         await bot.send_audio(
             chat_id,
+            caption=f"{local.source_link}({url}) | {local.download_link}({get_alt_link(audio_path)})",
             audio=types.FSInputFile(audio_path),
             performer=author,
             title=title,
             thumbnail=types.FSInputFile(cover_path)
         )
-    except TelegramEntityTooLarge:
-        await bot.send_message(chat_id, local.file_too_large)
+    else:
+        msg = local.file_too_large + get_alt_link(audio_path)
+        await bot.send_message(chat_id, msg)
+
     await progress_msg.delete()
 
 async def update_results(result_message: Message, results: list[dict[str,str]], min_size=0):
@@ -95,7 +103,7 @@ async def try_search(chat_id: int, query: str, state: FSMContext):
     local = get_localization(chat_id)
     response_msg = await bot.send_message(chat_id, local.search_results + f'\n_{query}_')
     try:
-        results = await yt_api.search(query, update_func=lambda results:update_results(response_msg, results, 10))
+        results = await yt_api.search(query, update_func=lambda results:update_results(response_msg, results, 7))
         try:
             await update_results(response_msg, results)
         except TelegramBadRequest:
