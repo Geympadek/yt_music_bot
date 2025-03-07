@@ -16,4 +16,4 @@ def download(filename: str):
     return flask.send_file(path, mimetype='audio/m4a')
 
 if __name__ == "__main__":
-    app.run(port=5012)
+    app.run(host="0.0.0.0", port=5012)
