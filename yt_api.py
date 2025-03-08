@@ -78,9 +78,9 @@ def load_audio(url: str, max_retries=3, timeout = 7.5) -> str:
         interrupted = False
 
         try:
-            ys.download(output_path=AUDIO_PATH, filename=filename, timeout=timeout)
             with file_mutex:
                 file_dates[filename] = time.time()
+            ys.download(output_path=AUDIO_PATH, filename=filename, timeout=timeout)
         except Exception:
             interrupted = True
             print("Error raised")
