@@ -16,6 +16,7 @@ os.makedirs(AUDIO_PATH, exist_ok=True)
 
 song_count = 0
 mutex = Lock()
+file_mutex = Lock()
 
 file_dates = {}
 def soft_clear():
@@ -23,18 +24,19 @@ def soft_clear():
     Cleares the temp directory, ignoring errors
     """
     global file_dates
-    for file in os.listdir(AUDIO_PATH):
-        path = os.path.join(AUDIO_PATH, file)
-        try:
-            if (file not in file_dates):
-                print(f"File {file} doesn't have a date, removing it.")
-                os.remove(path)
-            if time.time() - file_dates[file] > config.FILE_LIFETIME:
-                print(f"File {file} exists for too long, removing it.")
-                os.remove(path)
-                del file_dates[file]
-        except:
-            pass
+    with file_mutex:
+        for file in os.listdir(AUDIO_PATH):
+            path = os.path.join(AUDIO_PATH, file)
+            try:
+                if (file not in file_dates):
+                    print(f"File {file} doesn't have a date, removing it.")
+                    os.remove(path)
+                if time.time() - file_dates[file] > config.FILE_LIFETIME:
+                    print(f"File {file} exists for too long, removing it.")
+                    os.remove(path)
+                    del file_dates[file]
+            except:
+                pass
 
 def edit_cover(original: bytes):
     img = Image.open(BytesIO(original))
@@ -77,7 +79,8 @@ def load_audio(url: str, max_retries=3, timeout = 7.5) -> str:
 
         try:
             ys.download(output_path=AUDIO_PATH, filename=filename, timeout=timeout)
-            file_dates[filename] = time.time()
+            with file_mutex:
+                file_dates[filename] = time.time()
         except Exception:
             interrupted = True
             print("Error raised")
