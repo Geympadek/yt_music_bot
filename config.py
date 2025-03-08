@@ -19,3 +19,8 @@ Limit of file size (bytes)
 
 # ALT_DOWNLOAD_LINK = "http://94.181.94.29:5012/"
 ALT_DOWNLOAD_LINK = "http://127.0.0.1:5012/"
+
+RATE_LIMIT = 1
+"""
+Limit of seconds per one action. if exceeded the program will wait for this difference to  
+"""

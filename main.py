@@ -13,17 +13,30 @@ import yt_api
 
 import menu
 
-import requests
 import config
 
-import io
 import os
 import utils
 
 import localizations
+import asyncio
+
+from time import time
+
+async def sleep_limit(state: FSMContext):
+    last_action = await state.get_value('last_action_time')
+    if last_action is not None:
+        diff = (last_action + config.RATE_LIMIT) - time()
+        if diff > 0:
+            await state.update_data(last_action_time=time() + diff)
+            print(f"Sleeping for {diff}")
+            await asyncio.sleep(diff)
+            return
+    await state.update_data(last_action_time=time())
 
 async def ask_language(chat_id: int, state: FSMContext):
     kb = menu.get_language_menu()
+    await sleep_limit(state)
     lang_msg = await bot.send_message(chat_id, text="Select language / Выберите язык", reply_markup=kb)
     await state.update_data(lang_msg_id=lang_msg.message_id)
 
@@ -40,10 +53,12 @@ async def on_language_command(msg: types.Message, state: FSMContext):
 async def on_message(msg: types.Message, state: FSMContext):
     text = msg.text
 
-    if (utils.is_url(text)):
+    if not utils.is_url(text):
+        await try_search(msg.from_user.id, text.strip(), state)
+    elif not utils.is_url_playlist(text):
         await try_send_music(msg.from_user.id, text.strip(), state)
     else:
-        await try_search(msg.from_user.id, text.strip(), state)
+        await try_playlist_download(msg.from_user.id, text.strip(), state)
 
 def get_language(user_id: int):
     entry = database.read("users", {"user_id": user_id})[0]
@@ -58,11 +73,13 @@ def get_alt_link(filepath: str):
 async def try_send_music(chat_id: int, url: str, state: FSMContext):
     local = get_localization(chat_id)
 
+    await sleep_limit(state)
     progress_msg = await bot.send_message(chat_id, local.fetch_progress)
 
     try: 
         audio_path = await yt_api.download(url)
-    except None:
+    except:
+        await sleep_limit(state)
         await bot.send_message(chat_id, local.audio_error)
         await progress_msg.delete()
         return
@@ -70,17 +87,19 @@ async def try_send_music(chat_id: int, url: str, state: FSMContext):
     await progress_msg.edit_text(local.send_progress)
     await bot.send_chat_action(chat_id, "upload_voice")
 
+    audio = MP4(audio_path)
+    author = audio.tags['\xa9nam'][0]
+    title = audio.tags['\xa9ART'][0]
+    
     file_size = os.path.getsize(audio_path)
     if file_size < config.FILE_LIMIT:
-        cover_path = os.path.join(config.TEMP_DIR, "cover.jpg")
+        filename = os.path.split(audio_path)[1]
+        cover_path = os.path.join(config.TEMP_DIR, filename + ".jpg")
 
-        audio = MP4(audio_path)
-        author = audio.tags['\xa9nam'][0]
-        title = audio.tags['\xa9ART'][0]
-        
         with open(cover_path, "wb") as cover_file:
             cover_file.write(audio.tags['covr'][0])
 
+        await sleep_limit(state)
         await bot.send_audio(
             chat_id,
             caption=f"{local.source_link}({url}) | {local.download_link}({get_alt_link(audio_path)})",
@@ -89,8 +108,10 @@ async def try_send_music(chat_id: int, url: str, state: FSMContext):
             title=title,
             thumbnail=types.FSInputFile(cover_path)
         )
+        os.remove(cover_path)
     else:
-        msg = local.file_too_large + f"({get_alt_link(audio_path)})"
+        msg = f"[{title} | {author}]({get_alt_link(audio_path)})"
+        await sleep_limit(state)
         await bot.send_message(chat_id, msg)
 
     await progress_msg.delete()
@@ -101,6 +122,7 @@ async def update_results(result_message: Message, results: list[dict[str,str]], 
 
 async def try_search(chat_id: int, query: str, state: FSMContext):
     local = get_localization(chat_id)
+    await sleep_limit(state)
     response_msg = await bot.send_message(chat_id, local.search_results + f'\n_{query}_')
     try:
         results = await yt_api.search(query, update_func=lambda results:update_results(response_msg, results, 7))
@@ -109,8 +131,22 @@ async def try_search(chat_id: int, query: str, state: FSMContext):
         except TelegramBadRequest:
             pass
     except Exception as e:
+        await sleep_limit(state)
         await bot.send_message(chat_id, local.search_error)
         await response_msg.delete()
+
+async def try_playlist_download(chat_id: int, url: str, state:FSMContext):
+    playlist = yt_api.get_playlist(url)
+
+    local = get_localization(chat_id)
+
+    author = playlist["author"]
+    title = playlist['title']
+    links = playlist["links"]
+    await sleep_limit(state)
+    await bot.send_message(chat_id, text=local.playlist + f"\n_{title} | {author}_")
+
+    await asyncio.gather(*(try_send_music(chat_id, link, state) for link in links))
 
 @dp.callback_query(F.data.startswith("video_chosen"))
 async def on_video_chosen(query: CallbackQuery, state: FSMContext):
@@ -134,6 +170,7 @@ async def on_language_selected(query: CallbackQuery, state: FSMContext):
     await bot.edit_message_text(text=local.language_selected, chat_id=user_id, message_id=lang_msg_id)
 
     if await state.get_state() == "start":
+        await sleep_limit(state)
         await bot.send_message(user_id, text=local.start)
         await state.set_state(None)
 

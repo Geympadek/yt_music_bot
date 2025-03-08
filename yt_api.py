@@ -1,5 +1,5 @@
 from io import BytesIO
-from pytubefix import YouTube, Search
+from pytubefix import YouTube, Search, Playlist
 import os
 from threading import Lock
 from mutagen import mp4
@@ -132,3 +132,14 @@ async def search(query: str, limit: int = 7, update_func: typing.Callable[[list[
         if update_func is not None:
             await update_func(results)
     return results
+
+def get_playlist(url: str) -> dict[str, list[str] | str]:
+    result = {}
+    links = []
+    pl = Playlist(url)
+    for video_url in pl.video_urls:
+        links.append(video_url)
+    result["links"] = links
+    result["title"] = pl.title
+    result['author'] = pl.owner
+    return result
