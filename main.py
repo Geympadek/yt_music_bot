@@ -35,13 +35,19 @@ async def sleep_limit(state: FSMContext):
     await state.update_data(last_action_time=time())
 
 async def ask_language(chat_id: int, state: FSMContext):
+    print(f"Asking user {chat_id} for their language.")
     kb = menu.get_language_menu()
     await sleep_limit(state)
     lang_msg = await bot.send_message(chat_id, text="Select language / Выберите язык", reply_markup=kb)
     await state.update_data(lang_msg_id=lang_msg.message_id)
 
+@dp.startup()
+async def on_startup():
+    print("Bot is running!")
+
 @dp.message(Command("start"))
 async def on_start(msg: types.Message, state: FSMContext):
+    print(f"/start on user {msg.from_user.first_name} with id {msg.from_user.id}.")
     await ask_language(msg.from_user.id, state)
     await state.set_state("start")
 
@@ -51,6 +57,7 @@ async def on_language_command(msg: types.Message, state: FSMContext):
 
 @dp.message()
 async def on_message(msg: types.Message, state: FSMContext):
+    print(f"Message received from {msg.from_user.id}.")
     text = msg.text
 
     if not utils.is_url(text):
@@ -71,6 +78,7 @@ def get_alt_link(filepath: str):
     return config.ALT_DOWNLOAD_LINK + os.path.split(filepath)[1]
 
 async def try_send_music(chat_id: int, url: str, state: FSMContext):
+    print(f"Attempting to load music from url, user is {chat_id}, url is {url}")
     local = get_localization(chat_id)
 
     await sleep_limit(state)
@@ -79,6 +87,7 @@ async def try_send_music(chat_id: int, url: str, state: FSMContext):
     try: 
         audio_path = await yt_api.download(url)
     except:
+        print(f"An error occured!")
         await sleep_limit(state)
         await bot.send_message(chat_id, local.audio_error)
         await progress_msg.delete()
@@ -121,6 +130,7 @@ async def update_results(result_message: Message, results: list[dict[str,str]], 
     await result_message.edit_reply_markup(reply_markup=kb)
 
 async def try_search(chat_id: int, query: str, state: FSMContext):
+    print(f"Attempting to search music from query, user is {chat_id}, query is {query}")
     local = get_localization(chat_id)
     await sleep_limit(state)
     response_msg = await bot.send_message(chat_id, local.search_results + f'\n_{query}_')
@@ -136,6 +146,7 @@ async def try_search(chat_id: int, query: str, state: FSMContext):
         await response_msg.delete()
 
 async def try_playlist_download(chat_id: int, url: str, state:FSMContext):
+    print(f"Attempting to load a playlist, user is {chat_id}, url is {url}")
     playlist = yt_api.get_playlist(url)
 
     local = get_localization(chat_id)
