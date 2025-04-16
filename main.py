@@ -86,7 +86,8 @@ async def try_send_music(chat_id: int, url: str, state: FSMContext):
 
     try: 
         audio_path = await yt_api.download(url)
-    except:
+    except Exception as e:
+        print(e)
         print(f"An error occured!")
         await sleep_limit(state)
         await bot.send_message(chat_id, local.audio_error)
