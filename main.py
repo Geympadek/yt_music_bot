@@ -141,6 +141,7 @@ async def try_search(chat_id: int, query: str, state: FSMContext):
         except TelegramBadRequest:
             pass
     except Exception as e:
+        print(e)
         await sleep_limit(state)
         await bot.send_message(chat_id, local.search_error)
         await response_msg.delete()
@@ -157,7 +158,8 @@ async def try_playlist_download(chat_id: int, url: str, state:FSMContext):
     await sleep_limit(state)
     await bot.send_message(chat_id, text=local.playlist + f"\n_{title} | {author}_")
 
-    await asyncio.gather(*(try_send_music(chat_id, link, state) for link in links))
+    for link in links:
+        await try_send_music(chat_id, link, state)
 
 @dp.callback_query(F.data.startswith("video_chosen"))
 async def on_video_chosen(query: CallbackQuery, state: FSMContext):
