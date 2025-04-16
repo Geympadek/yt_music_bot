@@ -158,8 +158,9 @@ async def try_playlist_download(chat_id: int, url: str, state:FSMContext):
     await sleep_limit(state)
     await bot.send_message(chat_id, text=local.playlist + f"\n_{title} | {author}_")
 
-    for link in links:
-        await try_send_music(chat_id, link, state)
+    # for link in links:
+    #     await try_send_music(chat_id, link, state)
+    await asyncio.gather(*(try_send_music(chat_id, link, state) for link in links))
 
 @dp.callback_query(F.data.startswith("video_chosen"))
 async def on_video_chosen(query: CallbackQuery, state: FSMContext):
